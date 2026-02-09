@@ -16,44 +16,56 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout src
+      # Checkout du repo à la racine
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          path: "src"
 
-      - name: Checkout builds
+      # Checkout de la branche builds séparée pour pousser les plugins compilés
+      - name: Checkout builds branch
         uses: actions/checkout@v4
         with:
           ref: "builds"
           path: "builds"
 
+      # Nettoyage des anciens builds
       - name: Clean old builds
-        run: rm $GITHUB_WORKSPACE/builds/*.cs3 || true
+        run: rm -f $GITHUB_WORKSPACE/builds/*.cs3 || true
 
+      # Setup Java 17
       - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
+      # Setup Gradle
       - uses: gradle/actions/setup-gradle@v3
 
+      # Setup Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v2
+        with:
+          api-level: 33
+          build-tools: 33.0.1
 
+      # Build Plugins
       - name: Build Plugins
         run: |
-          cd $GITHUB_WORKSPACE/src
+          cd $GITHUB_WORKSPACE/CloudstreamPlugins
           chmod +x gradlew
-          ./gradlew clean genSources compilePluginJar makePluginsJson
+          ./gradlew clean genSources compilePluginJar makePluginsJson --parallel --warning-mode all
+
+          # Copie des fichiers .cs3 générés
+          mkdir -p $GITHUB_WORKSPACE/builds
           find . -type f -name "*.cs3" -exec cp {} "$GITHUB_WORKSPACE/builds" \;
           cp build/plugins.json "$GITHUB_WORKSPACE/builds"
 
+      # Push des builds sur la branche builds
       - name: Push builds
         run: |
           cd $GITHUB_WORKSPACE/builds
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
           git add .
-          git commit --amend -m "Build $GITHUB_SHA" || exit 0
+          git commit --amend -m "Build $GITHUB_SHA" || true
           git push --force
